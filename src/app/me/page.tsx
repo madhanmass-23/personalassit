@@ -1,18 +1,54 @@
 "use client";
 
-import { mockUser } from "@/mocks";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { User, Bell, Palette, Lock, Download, LogOut, ChevronRight, Moon, Settings } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import { authService } from "@/services/api/auth";
+import { useRouter } from "next/navigation";
 
 export default function MePage() {
+  const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+    const fetchUser = async () => {
+      try {
+        const data = await authService.me();
+        setUser(data.user);
+      } catch (err: any) {
+        if (err.status === 401) {
+          router.push('/login');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUser();
+  }, [router]);
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+      router.push('/login');
+    } catch (err) {
+      console.error(err);
+      router.push('/login'); // fallback
+    }
+  };
+
+  const exportData = async (type: 'expenses' | 'income') => {
+    const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}/reports/export/${type}`;
+    window.open(url, '_blank');
+  };
+
+  if (loading) return <div className="p-6 pt-safe flex items-center justify-center min-h-screen">Loading...</div>;
+  if (!user) return null;
 
   return (
     <div className="flex flex-col gap-6 p-6 pt-safe pb-24 min-h-screen-safe bg-secondary/30">
@@ -22,10 +58,10 @@ export default function MePage() {
 
       <div className="flex items-center gap-5 p-2">
         <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center border-4 border-background shadow-sm">
-          <span className="text-primary font-bold text-3xl">{mockUser.name[0]}</span>
+          <span className="text-primary font-bold text-3xl">{(user.name || "U")[0]}</span>
         </div>
         <div>
-          <h2 className="text-2xl font-bold">{mockUser.name}</h2>
+          <h2 className="text-2xl font-bold">{user.name}</h2>
           <p className="text-sm text-muted-foreground font-medium flex items-center gap-1 mt-1">
             <span className="w-2 h-2 rounded-full bg-green-500"></span> Online
           </p>
@@ -60,12 +96,13 @@ export default function MePage() {
             <CardContent className="p-0 divide-y">
               <SettingsRow icon={<User />} label="Profile details" />
               <SettingsRow icon={<Lock />} label="Privacy & Security" />
-              <SettingsRow icon={<Download />} label="Export Data" />
+              <SettingsRow icon={<Download />} label="Export Expenses" onClick={() => exportData('expenses')} />
+              <SettingsRow icon={<Download />} label="Export Income" onClick={() => exportData('income')} />
             </CardContent>
           </Card>
         </section>
         
-        <Button variant="destructive" className="w-full rounded-2xl h-14 text-base font-semibold shadow-sm">
+        <Button onClick={handleLogout} variant="destructive" className="w-full rounded-2xl h-14 text-base font-semibold shadow-sm">
           <LogOut className="w-5 h-5 mr-2" /> Log Out
         </Button>
       </div>
@@ -73,9 +110,9 @@ export default function MePage() {
   );
 }
 
-function SettingsRow({ icon, label, children }: { icon: React.ReactNode, label: string, children?: React.ReactNode }) {
+function SettingsRow({ icon, label, children, onClick }: { icon: React.ReactNode, label: string, children?: React.ReactNode, onClick?: () => void }) {
   return (
-    <div className="flex items-center gap-4 p-4 hover:bg-secondary/50 transition-colors cursor-pointer">
+    <div onClick={onClick} className="flex items-center gap-4 p-4 hover:bg-secondary/50 transition-colors cursor-pointer">
       <div className="text-muted-foreground [&_svg]:w-5 [&_svg]:h-5">
         {icon}
       </div>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { BottomNav } from "@/components/navigation/BottomNav";
+import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title: "Personal Assistant",
@@ -24,7 +25,9 @@ export default function RootLayout({
       <body className="min-h-screen-safe bg-background text-foreground antialiased selection:bg-primary/20">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <main className="pb-16 max-w-md mx-auto min-h-screen-safe relative shadow-2xl shadow-black/5 sm:border-x">
-            {children}
+            <Providers>
+              {children}
+            </Providers>
           </main>
           <BottomNav />
         </ThemeProvider>
