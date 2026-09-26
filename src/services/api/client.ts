@@ -17,7 +17,15 @@ export interface FetchClientOptions extends Omit<RequestInit, 'body'> {
 }
 
 export async function fetchClient(endpoint: string, options: FetchClientOptions = {}) {
-  const url = `${API_BASE_URL}${endpoint}`;
+  const cleanBaseUrl = (
+    process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api'
+  ).replace(/\/+$/, '');
+
+  const cleanEndpoint = endpoint.startsWith('/')
+    ? endpoint
+    : `/${endpoint}`;
+
+  const url = `${cleanBaseUrl}${cleanEndpoint}`;
   
   // Create default options, handling JSON serialization and credentials
   const defaultHeaders: Record<string, string> = {
