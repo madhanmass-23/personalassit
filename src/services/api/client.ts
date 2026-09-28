@@ -14,6 +14,31 @@ export class ApiError extends Error {
   }
 }
 
+const TOKEN_KEY = 'pa_auth_token';
+
+export const tokenStorage = {
+  get: (): string | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  },
+  set: (token: string): void => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(TOKEN_KEY, token);
+    } catch {}
+  },
+  clear: (): void => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+    } catch {}
+  },
+};
+
 export interface FetchClientOptions extends Omit<RequestInit, 'body'> {
   body?: BodyInit | Record<string, unknown> | object | null;
 }
@@ -33,6 +58,11 @@ export async function fetchClient(endpoint: string, options: FetchClientOptions 
   const defaultHeaders: Record<string, string> = {
     'Accept': 'application/json',
   };
+
+  const storedToken = tokenStorage.get();
+  if (storedToken) {
+    defaultHeaders['Authorization'] = `Bearer ${storedToken}`;
+  }
 
   let body = options.body;
   if (body && typeof body !== 'string' && !(body instanceof FormData)) {
@@ -63,6 +93,9 @@ export async function fetchClient(endpoint: string, options: FetchClientOptions 
     }
 
     if (!response.ok || (data && data.success === false)) {
+      if (response.status === 401) {
+        tokenStorage.clear();
+      }
       const message = data?.error?.message || 'An error occurred';
       const code = data?.error?.code || 'UNKNOWN_ERROR';
       throw new ApiError(message, code, response.status);
@@ -96,6 +129,11 @@ export async function fetchBlob(
   const defaultHeaders: Record<string, string> = {
     Accept: 'text/csv, application/octet-stream, */*',
   };
+
+  const storedToken = tokenStorage.get();
+  if (storedToken) {
+    defaultHeaders['Authorization'] = `Bearer ${storedToken}`;
+  }
 
   let body = options.body;
   if (body && typeof body !== 'string' && !(body instanceof FormData)) {

@@ -8,8 +8,8 @@ use PDO;
 class User {
     public static function findByEmail($email) {
         $db = Database::getInstance()->getConnection();
-        $stmt = $db->prepare("SELECT * FROM users WHERE email = :email LIMIT 1");
-        $stmt->execute(['email' => $email]);
+        $stmt = $db->prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(:email) LIMIT 1");
+        $stmt->execute(['email' => strtolower(trim($email))]);
         return $stmt->fetch();
     }
     

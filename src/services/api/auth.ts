@@ -1,9 +1,33 @@
-import { fetchClient } from './client';
+import { fetchClient, tokenStorage } from './client';
 
 export const authService = {
-  register: (data: Record<string, string>) => fetchClient('/auth/register', { method: 'POST', body: data }),
-  login: (data: Record<string, string>) => fetchClient('/auth/login', { method: 'POST', body: data }),
-  googleLogin: (data: Record<string, string>) => fetchClient('/auth/google-login', { method: 'POST', body: data }),
-  logout: () => fetchClient('/auth/logout', { method: 'POST', body: {} }),
+  register: async (data: Record<string, string>) => {
+    const res = await fetchClient('/auth/register', { method: 'POST', body: data });
+    if (res?.token) {
+      tokenStorage.set(res.token);
+    }
+    return res;
+  },
+  login: async (data: Record<string, string>) => {
+    const res = await fetchClient('/auth/login', { method: 'POST', body: data });
+    if (res?.token) {
+      tokenStorage.set(res.token);
+    }
+    return res;
+  },
+  googleLogin: async (data: Record<string, string>) => {
+    const res = await fetchClient('/auth/google-login', { method: 'POST', body: data });
+    if (res?.token) {
+      tokenStorage.set(res.token);
+    }
+    return res;
+  },
+  logout: async () => {
+    try {
+      await fetchClient('/auth/logout', { method: 'POST', body: {} });
+    } finally {
+      tokenStorage.clear();
+    }
+  },
   me: () => fetchClient('/auth/me', { method: 'GET' }),
 };
