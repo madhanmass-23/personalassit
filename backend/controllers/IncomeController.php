@@ -6,7 +6,7 @@ use Utils\Response;
 
 class IncomeController {
     public static function index() {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $items = Income::getAll($userId);
@@ -14,7 +14,7 @@ class IncomeController {
     }
 
     public static function show($id) {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $item = Income::getById($userId, $id);
@@ -24,7 +24,7 @@ class IncomeController {
     }
 
     public static function create() {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $data = json_decode(file_get_contents("php://input"), true) ?? [];
@@ -40,7 +40,7 @@ class IncomeController {
     }
 
     public static function update($id) {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $item = Income::getById($userId, $id);
@@ -59,7 +59,7 @@ class IncomeController {
     }
 
     public static function delete($id) {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $item = Income::getById($userId, $id);

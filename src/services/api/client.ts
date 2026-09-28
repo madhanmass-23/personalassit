@@ -93,7 +93,7 @@ export async function fetchClient(endpoint: string, options: FetchClientOptions 
     }
 
     if (!response.ok || (data && data.success === false)) {
-      if (response.status === 401) {
+      if (response.status === 401 && cleanEndpoint === '/auth/me') {
         tokenStorage.clear();
       }
       const message = data?.error?.message || 'An error occurred';

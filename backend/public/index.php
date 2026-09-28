@@ -57,10 +57,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// Ensure JSON Content-Type for endpoints
+// Ensure JSON Content-Type for endpoints (except avatar upload)
 if ($_SERVER['REQUEST_METHOD'] !== 'GET' && $_SERVER['REQUEST_METHOD'] !== 'OPTIONS') {
     $contentType = $_SERVER["CONTENT_TYPE"] ?? '';
-    if (strpos($contentType, 'application/json') === false) {
+    $isUpload = strpos($request_uri, '/api/profile/avatar') !== false;
+    if (!$isUpload && strpos($contentType, 'application/json') === false) {
         Response::error('Content-Type must be application/json', 'UNSUPPORTED_MEDIA_TYPE', 415);
     }
 }
@@ -106,6 +107,8 @@ if (strpos($request_uri, '/api/profile') === 0) {
         UserController::getProfile();
     } elseif ($request_uri === '/api/profile' && $method === 'PATCH') {
         UserController::updateProfile();
+    } elseif ($request_uri === '/api/profile/avatar' && $method === 'POST') {
+        UserController::uploadAvatar();
     }
 }
 
@@ -157,7 +160,13 @@ function handleResourceRoute($path, $controller) {
             return; // Not a match for this path
         }
         
-        AuthMiddleware::handle();
+        $user = AuthMiddleware::handle();
+        $GLOBALS['user'] = $user;
+        if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+            @session_start();
+        }
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['user'] = $user;
         
         if ($remainder === '' || $remainder === '/') {
             if ($method === 'GET') $controller::index();

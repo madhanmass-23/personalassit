@@ -8,7 +8,7 @@ use PDO;
 class ReportController {
     
     public static function today() {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
 
         $db = Database::getInstance()->getConnection();
@@ -50,7 +50,7 @@ class ReportController {
     }
     
     public static function week() {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         // Return dummy or implement full week logic. (Implementing simple one)
@@ -76,7 +76,7 @@ class ReportController {
     }
     
     public static function month() {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $db = Database::getInstance()->getConnection();
@@ -101,7 +101,7 @@ class ReportController {
     }
 
     public static function exportExpenses() {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) {
             header('HTTP/1.1 401 Unauthorized');
             exit;
@@ -130,7 +130,7 @@ class ReportController {
     }
 
     public static function exportIncome() {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) {
             header('HTTP/1.1 401 Unauthorized');
             exit;
@@ -159,7 +159,7 @@ class ReportController {
     }
 
     public static function exportMonthly() {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) {
             header('HTTP/1.1 401 Unauthorized');
             exit;

@@ -54,6 +54,12 @@ class AuthMiddleware {
 
         // Attach user to request global for downstream controllers
         $GLOBALS['user'] = $user;
+        if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+            @session_start();
+        }
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['user'] = $user;
+
         if (!empty($user['timezone'])) {
             date_default_timezone_set($user['timezone']);
         }

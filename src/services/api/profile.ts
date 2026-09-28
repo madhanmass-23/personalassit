@@ -14,6 +14,7 @@ export interface UserProfile {
 export interface UpdateProfileDTO {
   name?: string;
   timezone?: string;
+  avatar_url?: string | null;
 }
 
 export interface UserPreferences {
@@ -38,6 +39,14 @@ export const profileService = {
     fetchClient('/profile', { method: 'GET' }),
   updateProfile: (data: UpdateProfileDTO): Promise<{ user: UserProfile }> =>
     fetchClient('/profile', { method: 'PATCH', body: data }),
+  uploadAvatar: (file: File): Promise<{ user: UserProfile; avatar_url: string }> => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return fetchClient('/profile/avatar', {
+      method: 'POST',
+      body: formData,
+    });
+  },
   getPreferences: (): Promise<UserPreferences> =>
     fetchClient('/preferences', { method: 'GET' }),
   updatePreferences: (data: UpdatePreferencesDTO): Promise<UserPreferences> =>

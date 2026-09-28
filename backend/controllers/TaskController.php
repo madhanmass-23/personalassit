@@ -6,7 +6,7 @@ use Utils\Response;
 
 class TaskController {
     public static function index() {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $items = Task::getAll($userId);
@@ -14,7 +14,7 @@ class TaskController {
     }
 
     public static function show($id) {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $item = Task::getById($userId, $id);
@@ -24,7 +24,7 @@ class TaskController {
     }
 
     public static function create() {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $data = json_decode(file_get_contents("php://input"), true) ?? [];
@@ -68,7 +68,7 @@ class TaskController {
     }
 
     public static function update($id) {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $item = Task::getById($userId, $id);
@@ -117,7 +117,7 @@ class TaskController {
     }
 
     public static function complete($id) {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
 
         $item = Task::getById($userId, $id);
@@ -132,7 +132,7 @@ class TaskController {
     }
 
     public static function incomplete($id) {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
 
         $item = Task::getById($userId, $id);
@@ -147,7 +147,7 @@ class TaskController {
     }
 
     public static function delete($id) {
-        $userId = $GLOBALS['user']['id'] ?? null;
+        $userId = $GLOBALS['user']['id'] ?? $_SESSION['user_id'] ?? null;
         if (!$userId) Response::error('Unauthorized', 'UNAUTHORIZED', 401);
         
         $item = Task::getById($userId, $id);

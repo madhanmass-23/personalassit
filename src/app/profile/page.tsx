@@ -25,6 +25,7 @@ import {
   Clock,
   ArrowLeft,
   Loader2,
+  Edit3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -142,7 +143,7 @@ export default function ProfilePage() {
       if (apiErr?.status === 401) {
         router.push("/login");
       } else {
-        setError("Unable to load profile information. Please try again.");
+        setError("Couldn't load your profile. Try again.");
       }
     } finally {
       setLoading(false);
@@ -468,6 +469,11 @@ export default function ProfilePage() {
               setEditName(user.name || "");
               setEditTimezone(user.timezone || "UTC");
             }}
+            onAvatarUpdated={(updatedUser) => {
+              setUser(updatedUser);
+              setProfileSuccessMsg("Profile photo updated.");
+              setTimeout(() => setProfileSuccessMsg(null), 3000);
+            }}
           />
 
           {/* 2. Edit Profile Form (Real backend PATCH /api/profile) */}
@@ -598,6 +604,61 @@ export default function ProfilePage() {
               </motion.form>
             )}
           </AnimatePresence>
+
+          {/* 2. Account Section */}
+          <ProfileSection
+            title="Account"
+            icon={<User className="w-4 h-4" />}
+            description="Your personal identity and profile credentials"
+          >
+            <div className="space-y-3 divide-y divide-border/60 text-xs">
+              <div className="flex items-center justify-between pt-1">
+                <div className="space-y-0.5">
+                  <span className="text-muted-foreground block">Display Name</span>
+                  <span className="font-semibold text-foreground text-sm">{user.name}</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsEditingProfile(true);
+                    setEditName(user.name || "");
+                    setEditTimezone(user.timezone || "UTC");
+                  }}
+                  className="rounded-xl h-9 px-3 text-xs font-semibold gap-1.5 min-h-[36px] cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Name</span>
+                </Button>
+              </div>
+
+              <div className="pt-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground font-medium">Email Address</span>
+                  <Badge variant="outline" size="sm" className="text-[10px] text-muted-foreground">
+                    Read-only
+                  </Badge>
+                </div>
+                <div className="p-3 rounded-xl bg-secondary/50 border border-border/50 text-foreground font-mono text-xs select-all">
+                  {user.email}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Email is used as your account identifier.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between pt-3">
+                <div className="space-y-0.5">
+                  <span className="text-muted-foreground block">Active Timezone</span>
+                  <span className="font-semibold text-foreground flex items-center gap-1.5 text-xs">
+                    <Globe className="w-3.5 h-3.5 text-primary" />
+                    <span>{user.timezone || "UTC"}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </ProfileSection>
 
           {/* 3. Appearance Settings (next-themes + user_preferences.theme) */}
           <ProfileSection
@@ -797,64 +858,9 @@ export default function ProfilePage() {
             </div>
           </ProfileSection>
 
-          {/* 5. Account & Security (Read-Only Real Backend Information) */}
+          {/* 4. Data & Privacy (Real backend CSV exports) */}
           <ProfileSection
-            title="Account & Security"
-            icon={<Lock className="w-4 h-4" />}
-            description="Verified authentication and account details"
-          >
-            <div className="space-y-3 divide-y divide-border/60 text-xs">
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-muted-foreground">Registered Email</span>
-                <span className="font-semibold text-foreground">{user.email}</span>
-              </div>
-
-              <div className="flex items-center justify-between pt-3">
-                <span className="text-muted-foreground">Account Created</span>
-                <span className="font-semibold text-foreground">
-                  {formattedAccountDate}
-                </span>
-              </div>
-
-              {formattedLastLogin && (
-                <div className="flex items-center justify-between pt-3">
-                  <span className="text-muted-foreground">Last Session Login</span>
-                  <span className="font-semibold text-foreground">
-                    {formattedLastLogin}
-                  </span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between pt-3">
-                <span className="text-muted-foreground">Sign-In Provider</span>
-                <Badge
-                  variant={user.auth_provider === "google" ? "secondary" : "outline"}
-                  size="sm"
-                  className="uppercase text-[10px]"
-                >
-                  {user.auth_provider === "google"
-                    ? "Google Authentication"
-                    : "Email & Secure Password"}
-                </Badge>
-              </div>
-
-              <div className="flex items-center justify-between pt-3">
-                <div>
-                  <span className="text-muted-foreground block">Password</span>
-                  <span className="text-[10px] text-muted-foreground/80">
-                    Encrypted via Argon2id / bcrypt
-                  </span>
-                </div>
-                <span className="font-mono text-muted-foreground tracking-widest text-xs">
-                  ••••••••••••
-                </span>
-              </div>
-            </div>
-          </ProfileSection>
-
-          {/* 6. Data & Privacy (Real backend CSV exports) */}
-          <ProfileSection
-            title="Data & Export"
+            title="Data & Privacy"
             icon={<Download className="w-4 h-4" />}
             description="Download and export your personal data anytime"
           >
@@ -906,19 +912,68 @@ export default function ProfilePage() {
             </div>
           </ProfileSection>
 
-          {/* 7. Logout Action */}
-          <div className="pt-2">
-            <Button
-              type="button"
-              variant="destructive"
-              size="lg"
-              onClick={() => setIsLogoutDialogOpen(true)}
-              className="w-full h-13 rounded-2xl text-sm font-semibold shadow-xs gap-2 cursor-pointer transition-all active:scale-[0.99]"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Log Out of Account</span>
-            </Button>
-          </div>
+          {/* 5. Security Section */}
+          <ProfileSection
+            title="Security"
+            icon={<Lock className="w-4 h-4" />}
+            description="Account verification, credentials, and session management"
+          >
+            <div className="space-y-3 divide-y divide-border/60 text-xs">
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-muted-foreground">Account Created</span>
+                <span className="font-semibold text-foreground">
+                  {formattedAccountDate}
+                </span>
+              </div>
+
+              {formattedLastLogin && (
+                <div className="flex items-center justify-between pt-3">
+                  <span className="text-muted-foreground">Last Session Login</span>
+                  <span className="font-semibold text-foreground">
+                    {formattedLastLogin}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-3">
+                <span className="text-muted-foreground">Sign-In Provider</span>
+                <Badge
+                  variant={user.auth_provider === "google" ? "secondary" : "outline"}
+                  size="sm"
+                  className="uppercase text-[10px]"
+                >
+                  {user.auth_provider === "google"
+                    ? "Google Authentication"
+                    : "Email & Secure Password"}
+                </Badge>
+              </div>
+
+              <div className="flex items-center justify-between pt-3">
+                <div>
+                  <span className="text-muted-foreground block">Password</span>
+                  <span className="text-[10px] text-muted-foreground/80">
+                    Encrypted via Argon2id / bcrypt
+                  </span>
+                </div>
+                <span className="font-mono text-muted-foreground tracking-widest text-xs">
+                  ••••••••••••
+                </span>
+              </div>
+
+              <div className="pt-4">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="lg"
+                  onClick={() => setIsLogoutDialogOpen(true)}
+                  className="w-full h-12 rounded-xl text-sm font-semibold shadow-xs gap-2 cursor-pointer transition-all active:scale-[0.99] min-h-[44px]"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Log Out</span>
+                </Button>
+              </div>
+            </div>
+          </ProfileSection>
         </div>
       ) : null}
 
