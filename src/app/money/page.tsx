@@ -1,220 +1,767 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useEffect, useState, useMemo, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Plus,
+  Search,
+  X,
+  AlertCircle,
+  RefreshCw,
+  Sparkles,
+  Download,
+  Receipt,
+  ArrowDownRight,
+  ArrowUpRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Plus, IndianRupee, ArrowDownRight, ArrowUpRight, TrendingUp } from "lucide-react";
-import { expenseService } from "@/services/api/expense";
-import { incomeService } from "@/services/api/income";
-import { reportService } from "@/services/api/reports";
+import {
+  expenseService,
+  ExpenseItem,
+  CreateExpenseDTO,
+  UpdateExpenseDTO,
+} from "@/services/api/expense";
+import {
+  expenseCategoryService,
+  ExpenseCategoryItem,
+} from "@/services/api/expenseCategory";
+import {
+  incomeService,
+  IncomeItem,
+  CreateIncomeDTO,
+  UpdateIncomeDTO,
+} from "@/services/api/income";
+import {
+  incomeCategoryService,
+  IncomeCategoryItem,
+} from "@/services/api/incomeCategory";
+import {
+  reportService,
+  FinancialSummaryReport,
+} from "@/services/api/reports";
+import {
+  FinancialSummaryCard,
+  SummaryPeriod,
+} from "@/components/money/FinancialSummaryCard";
+import { TodaySpendingSection } from "@/components/money/TodaySpendingSection";
+import { ExpenseModal } from "@/components/money/ExpenseModal";
+import { IncomeModal } from "@/components/money/IncomeModal";
+import { DeleteTransactionDialog } from "@/components/money/DeleteTransactionDialog";
+import {
+  TransactionItemCard,
+  TransactionRecord,
+} from "@/components/money/TransactionItemCard";
+import { MoneySkeleton } from "@/components/money/MoneySkeleton";
+import { getTodayDateString } from "@/lib/dateUtils";
+import { cn } from "@/lib/utils";
 
-export default function MoneyPage() {
+type TransactionFilterType = "all" | "expense" | "income";
+
+function MoneyMain() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Data State
+  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [income, setIncome] = useState<IncomeItem[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryItem[]>([]);
+  const [incomeCategories, setIncomeCategories] = useState<IncomeCategoryItem[]>([]);
+
+  // Backend Reports Cache (for Today, Week, Month)
+  const [todayReport, setTodayReport] = useState<FinancialSummaryReport | null>(null);
+  const [weekReport, setWeekReport] = useState<FinancialSummaryReport | null>(null);
+  const [monthReport, setMonthReport] = useState<FinancialSummaryReport | null>(null);
+
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  
-  const [report, setReport] = useState<any>(null);
-  const [transactions, setTransactions] = useState<any[]>([]);
-  
-  const [quickEntry, setQuickEntry] = useState("");
-  const [entryMode, setEntryMode] = useState<"expense" | "income">("expense");
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  // Filters & Controls
+  const [summaryPeriod, setSummaryPeriod] = useState<SummaryPeriod>("today");
+  const [transFilter, setTransFilter] = useState<TransactionFilterType>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Modals
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [expenseModalMode, setExpenseModalMode] = useState<"create" | "edit">("create");
+  const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
+
+  const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
+  const [incomeModalMode, setIncomeModalMode] = useState<"create" | "edit">("create");
+  const [editingIncome, setEditingIncome] = useState<IncomeItem | null>(null);
+
+  // Deletion State
+  const [deleteTarget, setDeleteTarget] = useState<TransactionRecord | null>(null);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+
+  // Toast Banner
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 3500);
+  }, []);
+
+  // Fetch all financial data & reports
+  const fetchData = useCallback(async () => {
     try {
+      setError(null);
       setLoading(true);
-      const [reportData, expensesData, incomeData] = await Promise.all([
-        reportService.getToday(),
+
+      const [
+        expRes,
+        incRes,
+        expCatRes,
+        incCatRes,
+        todayRepRes,
+        weekRepRes,
+        monthRepRes,
+      ] = await Promise.allSettled([
         expenseService.getAll(),
-        incomeService.getAll()
+        incomeService.getAll(),
+        expenseCategoryService.getAll(),
+        incomeCategoryService.getAll(),
+        reportService.getToday(),
+        reportService.getWeek(),
+        reportService.getMonth(),
       ]);
-      
-      setReport(reportData);
-      
-      // Combine and sort recent transactions
-      const exp = Array.isArray(expensesData) ? expensesData.map(e => ({ ...e, type: 'expense', date: e.expense_date })) : [];
-      const inc = Array.isArray(incomeData) ? incomeData.map(i => ({ ...i, type: 'income', date: i.income_date, description: i.source })) : [];
-      
-      const all = [...exp, ...inc].sort((a, b) => {
-        return new Date(b.date).getTime() - new Date(a.date).getTime();
-      });
-      
-      setTransactions(all);
-    } catch (err: any) {
-      setError(err.message || "Failed to load financial data");
+
+      if (expRes.status === "fulfilled" && Array.isArray(expRes.value)) {
+        setExpenses(expRes.value);
+      }
+      if (incRes.status === "fulfilled" && Array.isArray(incRes.value)) {
+        setIncome(incRes.value);
+      }
+      if (expCatRes.status === "fulfilled" && Array.isArray(expCatRes.value)) {
+        setExpenseCategories(expCatRes.value);
+      }
+      if (incCatRes.status === "fulfilled" && Array.isArray(incCatRes.value)) {
+        setIncomeCategories(incCatRes.value);
+      }
+      if (todayRepRes.status === "fulfilled" && todayRepRes.value) {
+        setTodayReport(todayRepRes.value);
+      }
+      if (weekRepRes.status === "fulfilled" && weekRepRes.value) {
+        setWeekReport(weekRepRes.value);
+      }
+      if (monthRepRes.status === "fulfilled" && monthRepRes.value) {
+        setMonthReport(monthRepRes.value);
+      }
+
+      if (expRes.status === "rejected" && incRes.status === "rejected") {
+        throw new Error("Couldn't load your financial data.");
+      }
+    } catch {
+      setError("Couldn't load your financial data. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
-  const handleQuickAdd = async () => {
-    if (!quickEntry.trim()) return;
-    
-    // Basic parser for "Tea 20"
-    const parts = quickEntry.trim().split(' ');
-    const amountStr = parts.pop() || '';
-    let amount = parseFloat(amountStr);
-    
-    let description = parts.join(' ');
-    
-    // If reverse like "20 Tea"
-    if (isNaN(amount) && !isNaN(parseFloat(parts[0]))) {
-      amount = parseFloat(parts[0]);
-      description = [amountStr, ...parts.slice(1)].join(' ');
+  // Handle URL action parameters (e.g. from Home Quick Actions)
+  useEffect(() => {
+    const action = searchParams.get("action") || searchParams.get("create");
+    if (action === "add-expense" || action === "expense") {
+      setExpenseModalMode("create");
+      setEditingExpense(null);
+      setIsExpenseModalOpen(true);
+      router.replace("/money");
+    } else if (action === "add-income" || action === "income") {
+      setIncomeModalMode("create");
+      setEditingIncome(null);
+      setIsIncomeModalOpen(true);
+      router.replace("/money");
     }
-    
-    if (isNaN(amount) || amount <= 0) {
-      alert("Could not parse amount. Try format 'Item 100'");
-      return;
+  }, [searchParams, router]);
+
+  // Map category names onto expenses & income
+  const categoryMaps = useMemo(() => {
+    const expMap = new Map<number, string>();
+    expenseCategories.forEach((c) => expMap.set(c.id, c.name));
+
+    const incMap = new Map<number, string>();
+    incomeCategories.forEach((c) => incMap.set(c.id, c.name));
+
+    return { expMap, incMap };
+  }, [expenseCategories, incomeCategories]);
+
+  // Today Date string
+  const todayStr = useMemo(() => getTodayDateString(), []);
+
+  // Today's Expenses
+  const todayExpenses = useMemo(() => {
+    return expenses
+      .filter((e) => e.expense_date && e.expense_date.startsWith(todayStr))
+      .map((e) => ({
+        ...e,
+        category_name: e.category_name || (e.category_id ? categoryMaps.expMap.get(e.category_id) : null),
+      }));
+  }, [expenses, todayStr, categoryMaps.expMap]);
+
+  // Compute Financial Summary for selected period (Today / Week / Month / All Time)
+  const summaryMetrics = useMemo(() => {
+    if (summaryPeriod === "today" && todayReport) {
+      return {
+        earned: todayReport.income || 0,
+        spent: todayReport.expense || 0,
+        kept: todayReport.kept ?? (todayReport.income - todayReport.expense),
+      };
     }
-    
-    if (!description) {
-      description = "Misc";
+    if (summaryPeriod === "week" && weekReport) {
+      return {
+        earned: weekReport.income || 0,
+        spent: weekReport.expense || 0,
+        kept: weekReport.kept ?? (weekReport.income - weekReport.expense),
+      };
+    }
+    if (summaryPeriod === "month" && monthReport) {
+      return {
+        earned: monthReport.income || 0,
+        spent: monthReport.expense || 0,
+        kept: monthReport.kept ?? (monthReport.income - monthReport.expense),
+      };
     }
 
-    const today = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    // Default / All Time: Sum from loaded transactions deterministically
+    const totalSpent = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    const totalEarned = income.reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+    return {
+      earned: totalEarned,
+      spent: totalSpent,
+      kept: totalEarned - totalSpent,
+    };
+  }, [summaryPeriod, todayReport, weekReport, monthReport, expenses, income]);
 
-    try {
-      if (entryMode === "expense") {
-        await expenseService.create({
-          amount,
-          description,
-          expense_date: today
-        });
-      } else {
-        await incomeService.create({
-          amount,
-          source: description,
-          income_date: today
-        });
+  // Unified Transactions List
+  const unifiedTransactions = useMemo<TransactionRecord[]>(() => {
+    const list: TransactionRecord[] = [];
+
+    expenses.forEach((e) => {
+      list.push({
+        id: e.id,
+        type: "expense",
+        amount: Number(e.amount) || 0,
+        description: e.description,
+        category_id: e.category_id,
+        category_name: e.category_name || (e.category_id ? categoryMaps.expMap.get(e.category_id) : null),
+        category_icon: e.category_icon,
+        date: e.expense_date,
+        notes: e.notes,
+        created_at: e.created_at,
+      });
+    });
+
+    income.forEach((i) => {
+      list.push({
+        id: i.id,
+        type: "income",
+        amount: Number(i.amount) || 0,
+        description: i.source,
+        category_id: i.category_id,
+        category_name: i.category_name || (i.category_id ? categoryMaps.incMap.get(i.category_id) : null),
+        category_icon: i.category_icon,
+        date: i.income_date,
+        notes: i.notes,
+        created_at: i.created_at,
+      });
+    });
+
+    // Sort by date descending
+    return list.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateB !== dateA) return dateB - dateA;
+      return b.id - a.id;
+    });
+  }, [expenses, income, categoryMaps]);
+
+  // Filtered & Searched Transactions
+  const filteredTransactions = useMemo(() => {
+    let list = unifiedTransactions;
+
+    if (transFilter === "expense") {
+      list = list.filter((t) => t.type === "expense");
+    } else if (transFilter === "income") {
+      list = list.filter((t) => t.type === "income");
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(
+        (t) =>
+          t.description.toLowerCase().includes(q) ||
+          (t.category_name && t.category_name.toLowerCase().includes(q)) ||
+          (t.notes && t.notes.toLowerCase().includes(q))
+      );
+    }
+
+    return list;
+  }, [unifiedTransactions, transFilter, searchQuery]);
+
+  // Handle Save Expense (Create or Update)
+  const handleExpenseSubmit = async (data: CreateExpenseDTO | UpdateExpenseDTO) => {
+    if (expenseModalMode === "create") {
+      const created = await expenseService.create(data as CreateExpenseDTO);
+      setExpenses((prev) => [created, ...prev]);
+      showToast("Expense recorded successfully");
+    } else if (expenseModalMode === "edit" && editingExpense) {
+      const updated = await expenseService.update(editingExpense.id, data as UpdateExpenseDTO);
+      setExpenses((prev) =>
+        prev.map((e) => (e.id === editingExpense.id ? { ...e, ...updated } : e))
+      );
+      showToast("Expense updated successfully");
+    }
+    // Refresh report totals in background
+    reportService.getToday().then((r) => setTodayReport(r)).catch(() => {});
+  };
+
+  // Handle Save Income (Create or Update)
+  const handleIncomeSubmit = async (data: CreateIncomeDTO | UpdateIncomeDTO) => {
+    if (incomeModalMode === "create") {
+      const created = await incomeService.create(data as CreateIncomeDTO);
+      setIncome((prev) => [created, ...prev]);
+      showToast("Income added successfully");
+    } else if (incomeModalMode === "edit" && editingIncome) {
+      const updated = await incomeService.update(editingIncome.id, data as UpdateIncomeDTO);
+      setIncome((prev) =>
+        prev.map((i) => (i.id === editingIncome.id ? { ...i, ...updated } : i))
+      );
+      showToast("Income updated successfully");
+    }
+    // Refresh report totals in background
+    reportService.getToday().then((r) => setTodayReport(r)).catch(() => {});
+  };
+
+  // Edit Trigger from Transaction Item
+  const handleEditTransaction = (item: TransactionRecord) => {
+    if (item.type === "expense") {
+      const exp = expenses.find((e) => e.id === item.id);
+      if (exp) {
+        setEditingExpense(exp);
+        setExpenseModalMode("edit");
+        setIsExpenseModalOpen(true);
       }
-      setQuickEntry("");
-      fetchData(); // Refresh data
-    } catch (err: any) {
-      alert(err.message || "Failed to add entry");
+    } else {
+      const inc = income.find((i) => i.id === item.id);
+      if (inc) {
+        setEditingIncome(inc);
+        setIncomeModalMode("edit");
+        setIsIncomeModalOpen(true);
+      }
     }
   };
 
-  if (loading && !report) {
-    return <div className="flex justify-center items-center py-20">Loading...</div>;
-  }
-  
-  if (error && !report) {
-    return (
-      <div className="flex flex-col justify-center items-center py-10 text-red-500">
-        <p>{error}</p>
-        <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>Retry</Button>
-      </div>
-    );
-  }
+  // Delete Trigger from Transaction Item
+  const handleDeleteTransaction = (item: TransactionRecord) => {
+    setDeleteTarget(item);
+    setIsDeleteOpen(true);
+  };
 
-  const earned = report?.income || 0;
-  const spent = report?.expense || 0;
-  const kept = report?.kept || (earned - spent);
+  // Confirm Delete
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+
+    try {
+      if (deleteTarget.type === "expense") {
+        await expenseService.delete(deleteTarget.id);
+        setExpenses((prev) => prev.filter((e) => e.id !== deleteTarget.id));
+        showToast("Expense deleted");
+      } else {
+        await incomeService.delete(deleteTarget.id);
+        setIncome((prev) => prev.filter((i) => i.id !== deleteTarget.id));
+        showToast("Income deleted");
+      }
+      reportService.getToday().then((r) => setTodayReport(r)).catch(() => {});
+    } catch {
+      showToast("Failed to delete transaction.");
+    }
+  };
+
+  // CSV Export URL helper
+  const apiBaseUrl = (
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api"
+  ).replace(/\/+$/, "");
 
   return (
-    <div className="flex flex-col gap-6 p-6 pt-safe pb-24 min-h-screen-safe bg-background">
-      <header className="flex items-center justify-between mt-4">
-        <h1 className="text-3xl font-bold tracking-tight">Money</h1>
+    <div className="flex flex-col gap-6 md:gap-8 pb-12 w-full">
+      {/* Toast Notification Banner */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-5 right-5 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-foreground text-background shadow-xl text-sm font-medium border border-border"
+          >
+            <Sparkles className="w-4 h-4 text-primary shrink-0" />
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 1. PAGE HEADER */}
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+        <div className="space-y-1">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+            Money
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Know where your money is going.
+          </p>
+        </div>
+
+        {/* Primary (+ Add Expense) & Secondary (+ Add Income) Actions */}
+        <div className="flex items-center gap-2.5 self-start sm:self-auto flex-wrap">
+          <Button
+            onClick={() => {
+              setExpenseModalMode("create");
+              setEditingExpense(null);
+              setIsExpenseModalOpen(true);
+            }}
+            className="rounded-xl h-11 px-4.5 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md font-semibold flex items-center gap-2 min-h-[44px] cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Expense</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => {
+              setIncomeModalMode("create");
+              setEditingIncome(null);
+              setIsIncomeModalOpen(true);
+            }}
+            className="rounded-xl h-11 px-4 border-border/80 hover:bg-secondary text-foreground font-semibold flex items-center gap-2 min-h-[44px] cursor-pointer"
+          >
+            <ArrowUpRight className="w-4 h-4 text-emerald-500" />
+            <span>Add Income</span>
+          </Button>
+        </div>
       </header>
 
-      {/* Main Balance Card */}
-      <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white border-0 shadow-xl overflow-hidden relative">
-        <div className="absolute top-0 right-0 p-8 opacity-10">
-          <TrendingUp className="w-32 h-32" />
+      {loading ? (
+        <MoneySkeleton />
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center rounded-2xl border border-destructive/20 bg-destructive/5 space-y-3">
+          <div className="p-3 rounded-full bg-destructive/10 text-destructive">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground">
+            Couldn&apos;t load your financial data.
+          </h3>
+          <p className="text-sm text-muted-foreground max-w-sm">
+            {error}
+          </p>
+          <Button
+            variant="outline"
+            onClick={fetchData}
+            className="rounded-xl px-5 gap-2 min-h-[40px] mt-2 cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Try again
+          </Button>
         </div>
-        <CardContent className="p-6 flex flex-col gap-6 relative z-10">
-          
-          <div className="grid grid-cols-2 gap-4 border-b border-white/10 pb-4">
-            <div>
-              <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Earned Today</p>
-              <p className="text-2xl font-bold text-green-400">₹{earned}</p>
-            </div>
-            <div>
-              <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Spent Today</p>
-              <p className="text-2xl font-bold text-red-400">₹{spent}</p>
-            </div>
-          </div>
-          
-          <div className="space-y-1">
-            <p className="text-slate-300 text-sm font-medium uppercase tracking-wider">Kept</p>
-            <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold tracking-tighter">₹{kept}</span>
-            </div>
-          </div>
-
-          <div className="flex gap-4">
-            <Button 
-              onClick={() => setEntryMode('expense')}
-              className={`flex-1 ${entryMode === 'expense' ? 'bg-white text-black hover:bg-gray-200' : 'bg-white/20 hover:bg-white/30 text-white'} border-0 backdrop-blur-sm transition-colors`}
-            >
-              - Expense
-            </Button>
-            <Button 
-              onClick={() => setEntryMode('income')}
-              className={`flex-1 ${entryMode === 'income' ? 'bg-white text-black hover:bg-gray-200' : 'bg-white/20 hover:bg-white/30 text-white'} border-0 backdrop-blur-sm transition-colors`}
-            >
-              + Income
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quick Entry Input */}
-      <div className="relative flex flex-col gap-2">
-        <p className="text-sm font-medium ml-1">
-          Quick add {entryMode} (e.g. {entryMode === 'expense' ? "'Tea 20'" : "'Salary 5000'"})
-        </p>
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <IndianRupee className="w-5 h-5 text-muted-foreground" />
-          </div>
-          <input 
-            type="text" 
-            value={quickEntry}
-            onChange={(e) => setQuickEntry(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleQuickAdd()}
-            placeholder={entryMode === 'expense' ? "Tea 20" : "Salary 5000"} 
-            className="w-full pl-11 pr-14 py-4 bg-secondary/50 border-0 rounded-2xl text-base focus:ring-2 focus:ring-primary focus:bg-background transition-all outline-none"
+      ) : (
+        <>
+          {/* 2. FINANCIAL SUMMARY: Earned, Spent, Kept */}
+          <FinancialSummaryCard
+            period={summaryPeriod}
+            onPeriodChange={setSummaryPeriod}
+            earned={summaryMetrics.earned}
+            spent={summaryMetrics.spent}
+            kept={summaryMetrics.kept}
           />
-          <div className="absolute inset-y-0 right-2 flex items-center">
-            <Button onClick={handleQuickAdd} size="icon" className={`h-10 w-10 rounded-xl ${entryMode === 'expense' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} text-white`}>
-              <Plus className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
-      </div>
 
-      <section className="space-y-4 flex-1">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold tracking-tight">Recent Transactions</h3>
-        </div>
-        
-        {transactions.length === 0 ? (
-          <div className="text-center py-10 text-muted-foreground">
-            No transactions found.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {transactions.slice(0, 10).map(t => (
-              <div key={`${t.type}-${t.id}`} className="flex items-center gap-4 p-4 rounded-2xl bg-card border shadow-sm">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${t.type === 'expense' ? 'bg-red-500/10 text-red-600' : 'bg-green-500/10 text-green-600'}`}>
-                  {t.type === 'expense' ? <ArrowDownRight className="w-6 h-6" /> : <ArrowUpRight className="w-6 h-6" />}
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <p className="font-semibold leading-none mb-1 truncate">{t.description}</p>
-                  <p className="text-xs text-muted-foreground">{new Date(t.date).toLocaleDateString()}</p>
-                </div>
-                <span className={`font-bold text-lg ${t.type === 'expense' ? '' : 'text-green-600'}`}>
-                  {t.type === 'expense' ? '-' : '+'}₹{t.amount}
+          {/* 3. TODAY'S SPENDING SECTION */}
+          <TodaySpendingSection
+            todayExpenses={todayExpenses}
+            onAddExpenseClick={() => {
+              setExpenseModalMode("create");
+              setEditingExpense(null);
+              setIsExpenseModalOpen(true);
+            }}
+          />
+
+          {/* 4. TRANSACTIONS SECTION */}
+          <section aria-label="Transactions" className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-muted-foreground" />
+                <h2 className="text-base font-semibold tracking-tight text-foreground">
+                  Transaction History
+                </h2>
+                <span className="text-xs text-muted-foreground">
+                  ({filteredTransactions.length})
                 </span>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+
+              {/* CSV Export Links (using existing Report API endpoints) */}
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <a
+                  href={`${apiBaseUrl}/reports/export/expenses`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/60 bg-secondary/50 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> Export Expenses
+                </a>
+                <a
+                  href={`${apiBaseUrl}/reports/export/income`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/60 bg-secondary/50 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> Export Income
+                </a>
+              </div>
+            </div>
+
+            {/* Filter Tabs & Search Controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Type Filter: All | Expenses | Income */}
+              <div
+                role="tablist"
+                aria-label="Filter transactions"
+                className="flex items-center gap-1 p-1 bg-secondary/60 rounded-xl border border-border/50 self-start sm:self-auto text-xs"
+              >
+                {(
+                  [
+                    { id: "all", label: "All" },
+                    { id: "expense", label: "Expenses" },
+                    { id: "income", label: "Income" },
+                  ] as { id: TransactionFilterType; label: string }[]
+                ).map((tab) => {
+                  const isActive = transFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setTransFilter(tab.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg font-medium transition-all min-h-[32px] cursor-pointer",
+                        isActive
+                          ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative flex-1 sm:max-w-xs">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search transactions..."
+                  className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-input bg-card text-foreground text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/60 transition-all shadow-xs"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    aria-label="Clear search"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Transaction Items or Empty States */}
+            {filteredTransactions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center rounded-3xl border border-border/60 bg-card/40 space-y-3 min-h-[220px]">
+                <div className="p-3.5 rounded-full bg-secondary text-muted-foreground/70 mb-1">
+                  {searchQuery ? (
+                    <Search className="w-6 h-6" />
+                  ) : transFilter === "income" ? (
+                    <ArrowUpRight className="w-6 h-6 text-emerald-500" />
+                  ) : transFilter === "expense" ? (
+                    <ArrowDownRight className="w-6 h-6 text-rose-500" />
+                  ) : (
+                    <Receipt className="w-6 h-6" />
+                  )}
+                </div>
+
+                {searchQuery ? (
+                  <>
+                    <h3 className="text-base font-semibold text-foreground">
+                      No matching transactions found
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-sm">
+                      No transactions matched &ldquo;{searchQuery}&rdquo;. Try another keyword.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSearchQuery("")}
+                      className="rounded-xl px-4 mt-2 cursor-pointer"
+                    >
+                      Clear search
+                    </Button>
+                  </>
+                ) : transFilter === "income" ? (
+                  <>
+                    <h3 className="text-base font-semibold text-foreground">
+                      No income recorded yet.
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-sm">
+                      Add your first income entry to track your earnings.
+                    </p>
+                    <Button
+                      onClick={() => {
+                        setIncomeModalMode("create");
+                        setEditingIncome(null);
+                        setIsIncomeModalOpen(true);
+                      }}
+                      className="rounded-xl px-5 mt-2 gap-1.5 font-medium cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" /> Add Income
+                    </Button>
+                  </>
+                ) : transFilter === "expense" ? (
+                  <>
+                    <h3 className="text-base font-semibold text-foreground">
+                      No expenses recorded yet.
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-sm">
+                      Your spending will appear here once you log an expense.
+                    </p>
+                    <Button
+                      onClick={() => {
+                        setExpenseModalMode("create");
+                        setEditingExpense(null);
+                        setIsExpenseModalOpen(true);
+                      }}
+                      className="rounded-xl px-5 mt-2 gap-1.5 font-medium cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" /> Add Expense
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-base font-semibold text-foreground">
+                      No transactions yet.
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-sm">
+                      Start tracking your money by recording an expense or income.
+                    </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Button
+                        onClick={() => {
+                          setExpenseModalMode("create");
+                          setEditingExpense(null);
+                          setIsExpenseModalOpen(true);
+                        }}
+                        className="rounded-xl px-4 gap-1.5 font-medium cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" /> Add Expense
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIncomeModalMode("create");
+                          setEditingIncome(null);
+                          setIsIncomeModalOpen(true);
+                        }}
+                        className="rounded-xl px-4 gap-1.5 font-medium cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4 text-emerald-500" /> Add Income
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                <AnimatePresence initial={false}>
+                  {filteredTransactions.map((item) => (
+                    <TransactionItemCard
+                      key={`${item.type}-${item.id}`}
+                      transaction={item}
+                      onEdit={handleEditTransaction}
+                      onDelete={handleDeleteTransaction}
+                    />
+                  ))}
+                </AnimatePresence>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+
+      {/* 5. ADD / EDIT EXPENSE MODAL */}
+      {isExpenseModalOpen && (
+        <ExpenseModal
+          key={editingExpense ? `edit-exp-${editingExpense.id}` : "create-exp"}
+          isOpen={isExpenseModalOpen}
+          mode={expenseModalMode}
+          initialExpense={editingExpense}
+          categories={expenseCategories}
+          onCategoryCreated={(newCat) => {
+            setExpenseCategories((prev) => [newCat, ...prev]);
+            showToast(`Category "${newCat.name}" created`);
+          }}
+          onClose={() => {
+            setIsExpenseModalOpen(false);
+            setEditingExpense(null);
+          }}
+          onSubmit={handleExpenseSubmit}
+        />
+      )}
+
+      {/* 6. ADD / EDIT INCOME MODAL */}
+      {isIncomeModalOpen && (
+        <IncomeModal
+          key={editingIncome ? `edit-inc-${editingIncome.id}` : "create-inc"}
+          isOpen={isIncomeModalOpen}
+          mode={incomeModalMode}
+          initialIncome={editingIncome}
+          categories={incomeCategories}
+          onCategoryCreated={(newCat) => {
+            setIncomeCategories((prev) => [newCat, ...prev]);
+            showToast(`Income category "${newCat.name}" created`);
+          }}
+          onClose={() => {
+            setIsIncomeModalOpen(false);
+            setEditingIncome(null);
+          }}
+          onSubmit={handleIncomeSubmit}
+        />
+      )}
+
+      {/* 7. DELETE CONFIRMATION DIALOG */}
+      <DeleteTransactionDialog
+        isOpen={isDeleteOpen}
+        type={deleteTarget?.type || "expense"}
+        description={deleteTarget?.description || ""}
+        amount={deleteTarget?.amount || 0}
+        onClose={() => {
+          setIsDeleteOpen(false);
+          setDeleteTarget(null);
+        }}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
+  );
+}
+
+export default function MoneyPage() {
+  return (
+    <Suspense fallback={<MoneySkeleton />}>
+      <MoneyMain />
+    </Suspense>
   );
 }

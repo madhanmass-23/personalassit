@@ -46,3 +46,9 @@ backend/.env.*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# deployment archives and scratch files
+*.zip
+generate_crud.py
+public_api_index_production.php
+TEST_REPORT.md

@@ -11,14 +11,27 @@ class AuthMiddleware {
         $token = null;
         
         // Check Bearer Token in Header (if cross-domain)
-        $headers = apache_request_headers();
-        if (isset($headers['Authorization'])) {
-            $matches = [];
-            if (preg_match('/Bearer\s(\S+)/', $headers['Authorization'], $matches)) {
-                $token = $matches[1];
+        $authHeader = null;
+        if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+            $authHeader = trim($_SERVER['HTTP_AUTHORIZATION']);
+        } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+            $authHeader = trim($_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+        } elseif (function_exists('getallheaders')) {
+            $headers = getallheaders();
+            foreach ($headers as $key => $value) {
+                if (strtolower($key) === 'authorization') {
+                    $authHeader = trim($value);
+                    break;
+                }
             }
         }
-        
+
+        if ($authHeader) {
+            $matches = [];
+            if (preg_match('/Bearer\s(\S+)/i', $authHeader, $matches)) {
+                $token = $matches[1];
+            }
+        }        
         // Check HttpOnly Cookie (if same domain)
         if (!$token && isset($_COOKIE['auth_token'])) {
             $token = $_COOKIE['auth_token'];
@@ -41,6 +54,9 @@ class AuthMiddleware {
 
         // Attach user to request global for downstream controllers
         $GLOBALS['user'] = $user;
+        if (!empty($user['timezone'])) {
+            date_default_timezone_set($user['timezone']);
+        }
         return $user;
     }
 }

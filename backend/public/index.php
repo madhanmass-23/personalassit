@@ -48,6 +48,7 @@ if (in_array($origin, $allowed_origins)) {
     header("Access-Control-Allow-Credentials: true");
     header("Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS");
     header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+    header("Access-Control-Expose-Headers: Content-Disposition");
 }
 
 // Handle preflight OPTIONS request

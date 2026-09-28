@@ -1,8 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import { BottomNav } from "@/components/navigation/BottomNav";
 import { Providers } from "@/components/providers";
+import { AppShell } from "@/components/layout/AppShell";
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F8FAFC" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B0F19" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
   title: "Personal Assistant",
@@ -24,12 +34,11 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen-safe bg-background text-foreground antialiased selection:bg-primary/20">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <main className="pb-16 max-w-md mx-auto min-h-screen-safe relative shadow-2xl shadow-black/5 sm:border-x">
-            <Providers>
+          <Providers>
+            <AppShell>
               {children}
-            </Providers>
-          </main>
-          <BottomNav />
+            </AppShell>
+          </Providers>
         </ThemeProvider>
       </body>
     </html>

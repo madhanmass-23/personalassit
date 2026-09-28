@@ -182,9 +182,9 @@ class AuthController {
             $cookieStr = "$name=" . urlencode($token);
             $cookieStr .= "; expires=" . gmdate('D, d M Y H:i:s T', $expires);
             $cookieStr .= "; Max-Age=" . max(0, $expires - time());
-            $cookieStr .= "; path=$path";
+            $cookieStr .= "; Path=$path";
             if ($secure) {
-                $cookieStr .= "; secure";
+                $cookieStr .= "; Secure";
             }
             if ($httponly) {
                 $cookieStr .= "; HttpOnly";

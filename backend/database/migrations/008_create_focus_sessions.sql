@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS focus_sessions (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    started_at TIMESTAMP NOT NULL,
+    ended_at TIMESTAMP NULL DEFAULT NULL,
+    duration_seconds INT UNSIGNED NOT NULL DEFAULT 0,
+    mode VARCHAR(50) NOT NULL DEFAULT 'normal',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    INDEX idx_user_started (user_id, started_at),
+
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
