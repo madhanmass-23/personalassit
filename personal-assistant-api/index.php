@@ -1,14 +1,13 @@
 <?php
 /**
- * PUBLIC DEPLOYMENT BOOTSTRAP
+ * PUBLIC DEPLOYMENT BOOTSTRAP GATEWAY
  * 
- * This file lives in public_html/personal-assistant-api/index.php
- * It securely loads the isolated private backend.
- * 
- * Adjust the relative path if your server structure differs.
+ * Location on ServerByte: public_html/personal-assistant-api/index.php
+ * Securely routes all incoming requests to the isolated private backend:
+ * /home/sites/scaro.online/personal-assistant-backend/public/index.php
  */
 
-// Extract Bearer token or cookie to populate session for legacy controllers
+// 1. Extract Bearer token or cookie to populate session for legacy controllers
 $rawAuthHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
 if (!$rawAuthHeader && function_exists('getallheaders')) {
     $allHeaders = getallheaders();
@@ -40,9 +39,25 @@ if ($bootstrapToken) {
     }
 }
 
-$private_backend_path = realpath(__DIR__ . '/../../personal-assistant-backend/public/index.php');
+// 2. Resolve private backend path with fallback candidate locations
+$candidate_paths = [
+    __DIR__ . '/../../personal-assistant-backend/public/index.php',
+    realpath(__DIR__ . '/../../personal-assistant-backend/public/index.php'),
+    '/home/sites/scaro.online/personal-assistant-backend/public/index.php',
+    __DIR__ . '/../personal-assistant-backend/public/index.php',
+    __DIR__ . '/../backend/public/index.php',
+    __DIR__ . '/../../backend/public/index.php'
+];
 
-if (!$private_backend_path || !file_exists($private_backend_path)) {
+$private_backend_path = null;
+foreach ($candidate_paths as $path) {
+    if ($path && file_exists($path)) {
+        $private_backend_path = $path;
+        break;
+    }
+}
+
+if (!$private_backend_path) {
     header('HTTP/1.1 500 Internal Server Error');
     header('Content-Type: application/json');
     echo json_encode([
