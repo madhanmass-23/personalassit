@@ -1,4 +1,5 @@
 import { fetchClient, tokenStorage } from './client';
+import { vaultSession } from '@/lib/vault/vaultSession';
 
 export const authService = {
   register: async (data: Record<string, string>) => {
@@ -27,7 +28,9 @@ export const authService = {
       await fetchClient('/auth/logout', { method: 'POST', body: {} });
     } finally {
       tokenStorage.clear();
+      vaultSession.reset();
     }
   },
   me: () => fetchClient('/auth/me', { method: 'GET' }),
 };
+

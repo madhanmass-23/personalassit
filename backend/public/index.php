@@ -29,6 +29,8 @@ use Middleware\RateLimitMiddleware;
 use Middleware\AuthMiddleware;
 use Controllers\AuthController;
 use Controllers\UserController;
+use Controllers\VaultController;
+use Controllers\VaultEntryController;
 
 // Load environment variables
 Environment::load(dirname(__DIR__) . '/.env');
@@ -57,24 +59,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// Ensure JSON Content-Type for endpoints (except avatar upload)
-if ($_SERVER['REQUEST_METHOD'] !== 'GET' && $_SERVER['REQUEST_METHOD'] !== 'OPTIONS') {
-    $contentType = $_SERVER["CONTENT_TYPE"] ?? '';
-    $isUpload = strpos($request_uri, '/api/profile/avatar') !== false;
-    if (!$isUpload && strpos($contentType, 'application/json') === false) {
-        Response::error('Content-Type must be application/json', 'UNSUPPORTED_MEDIA_TYPE', 415);
-    }
-}
-
 // Simple Router
-$request_uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$request_uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '/';
 
 // Strip deployment base path if present
 $base_path = '/personal-assistant-api';
 if (strpos($request_uri, $base_path) === 0) {
     $request_uri = substr($request_uri, strlen($base_path));
 }
-$method = $_SERVER['REQUEST_METHOD'];
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+// Ensure JSON Content-Type for mutating endpoints (except avatar upload and DELETE/GET/OPTIONS)
+if ($method !== 'GET' && $method !== 'OPTIONS' && $method !== 'DELETE') {
+    $contentType = $_SERVER["CONTENT_TYPE"] ?? $_SERVER["HTTP_CONTENT_TYPE"] ?? '';
+    $isUpload = strpos($request_uri, '/api/profile/avatar') !== false;
+    if (!$isUpload && strpos($contentType, 'application/json') === false) {
+        Response::error('Content-Type must be application/json', 'UNSUPPORTED_MEDIA_TYPE', 415);
+    }
+}
 
 // Health Endpoint
 if ($request_uri === '/api/health' && $method === 'GET') {
@@ -146,6 +148,71 @@ if (strpos($request_uri, '/api/reports/') === 0) {
         \Controllers\ReportController::exportMonthly();
         exit;
     }
+}
+
+// Secure Vault Routes (Protected)
+if (strpos($request_uri, '/api/vault') === 0) {
+    AuthMiddleware::handle();
+
+    // Vault Key Rotation: PATCH /api/vault/key
+    if ($request_uri === '/api/vault/key' || $request_uri === '/api/vault/key/') {
+        if ($method === 'PATCH' || $method === 'PUT') {
+            VaultController::updateKey();
+        } else {
+            Response::error('Method not allowed', 'METHOD_NOT_ALLOWED', 405);
+        }
+        exit;
+    }
+
+    // Vault Entries Routes: /api/vault/entries...
+    if (strpos($request_uri, '/api/vault/entries') === 0) {
+        $entryRemainder = substr($request_uri, strlen('/api/vault/entries'));
+        if ($entryRemainder === '' || $entryRemainder === '/') {
+            if ($method === 'GET') {
+                VaultEntryController::index();
+            } elseif ($method === 'POST') {
+                VaultEntryController::create();
+            } else {
+                Response::error('Method not allowed', 'METHOD_NOT_ALLOWED', 405);
+            }
+            exit;
+        }
+
+        // Single Entry by UUID: /api/vault/entries/{id}
+        if (preg_match('#^/([a-zA-Z0-9_-]+)$#', $entryRemainder, $matches)) {
+            $entryId = $matches[1];
+            if ($method === 'GET') {
+                VaultEntryController::show($entryId);
+            } elseif ($method === 'PATCH' || $method === 'PUT') {
+                VaultEntryController::update($entryId);
+            } elseif ($method === 'DELETE') {
+                VaultEntryController::delete($entryId);
+            } else {
+                Response::error('Method not allowed', 'METHOD_NOT_ALLOWED', 405);
+            }
+            exit;
+        }
+
+        Response::error('Endpoint not found', 'NOT_FOUND', 404);
+        exit;
+    }
+
+    // Main Vault Routes: /api/vault
+    if ($request_uri === '/api/vault' || $request_uri === '/api/vault/') {
+        if ($method === 'GET') {
+            VaultController::get();
+        } elseif ($method === 'POST') {
+            VaultController::create();
+        } elseif ($method === 'DELETE') {
+            VaultController::delete();
+        } else {
+            Response::error('Method not allowed', 'METHOD_NOT_ALLOWED', 405);
+        }
+        exit;
+    }
+
+    Response::error('Endpoint not found', 'NOT_FOUND', 404);
+    exit;
 }
 
 // Helper for resource routes

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { navItems } from "./BottomNav";
+import { sidebarNavItems } from "./BottomNav";
 import { Sparkles, Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
@@ -42,9 +42,10 @@ export function Sidebar() {
 
         {/* Navigation Links */}
         <nav className="space-y-1.5" aria-label="Main menu">
-          {navItems.map((item) => {
+          {sidebarNavItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
+
 
             return (
               <Link
