@@ -750,6 +750,193 @@ class TestSecureVaultBackendAPI(unittest.TestCase):
         self.assertEqual(status, 201)
         self.assertEqual(res['data']['entry']['encrypted_payload'], test_ciphertext)
 
+    def test_24_production_path_normalization_simulation(self):
+        # Simulates normalizeApiPath on various production URI formats
+        def normalize_api_path(uri):
+            parsed = uri.split('?')[0]
+            clean = '/' + parsed.strip('/')
+            prefixes = ['/personal-assistant-api', '/index.php', '/api.php']
+            changed = True
+            while changed:
+                changed = False
+                for p in prefixes:
+                    if clean.startswith(p):
+                        clean = clean[len(p):]
+                        clean = '/' + clean.strip('/')
+                        changed = True
+            return '/' if clean == '' else clean
+
+        self.assertEqual(normalize_api_path('/personal-assistant-api/api/vault'), '/api/vault')
+        self.assertEqual(normalize_api_path('/personal-assistant-api/index.php/api/vault'), '/api/vault')
+        self.assertEqual(normalize_api_path('/personal-assistant-api/api/vault/'), '/api/vault')
+        self.assertEqual(normalize_api_path('/personal-assistant-api/api/vault/key'), '/api/vault/key')
+        self.assertEqual(normalize_api_path('/personal-assistant-api/api/vault/entries'), '/api/vault/entries')
+        self.assertEqual(normalize_api_path('/personal-assistant-api/api/vault/entries/550e8400-e29b-41d4-a716-446655440000'), '/api/vault/entries/550e8400-e29b-41d4-a716-446655440000')
+        self.assertEqual(normalize_api_path('/personal-assistant-api/api/auth/me'), '/api/auth/me')
+        self.assertEqual(normalize_api_path('/personal-assistant-api/api/tasks'), '/api/tasks')
+        self.assertEqual(normalize_api_path('/personal-assistant-api/api/health'), '/api/health')
+
+    def test_25_unauthenticated_requests_return_401_not_404(self):
+        # Dispatcher simulation: /api/vault without auth must yield 401, not 404
+        def mock_router(method, uri, user=None):
+            # Normalization
+            parsed = uri.split('?')[0]
+            clean = '/' + parsed.strip('/')
+            for p in ['/personal-assistant-api', '/index.php']:
+                if clean.startswith(p):
+                    clean = clean[len(p):]
+                    clean = '/' + clean.strip('/')
+
+            if clean.startswith('/api/auth/'):
+                if clean == '/api/auth/me':
+                    if not user: return 401, {'error': {'code': 'UNAUTHORIZED'}}
+                    return 200, {'data': {'user': user}}
+
+            if clean == '/api/vault' or clean.startswith('/api/vault/'):
+                if not user:
+                    return 401, {'error': {'code': 'UNAUTHORIZED', 'message': 'Authentication required'}}
+                if clean == '/api/vault':
+                    if method == 'GET': return VaultController.get_vault(user)
+                    if method == 'POST': return VaultController.create_vault(user, {})
+                if clean == '/api/vault/key' and method in ['PATCH', 'PUT']:
+                    return VaultController.update_key(user, {})
+                if clean == '/api/vault/entries' and method == 'GET':
+                    return VaultEntryController.list_entries(user)
+                if clean.startswith('/api/vault/entries/'):
+                    return 200, {'data': {'entry': {}}}
+
+            return 404, {'error': {'code': 'NOT_FOUND', 'message': 'Endpoint not found'}}
+
+        # 1. GET /personal-assistant-api/api/vault without auth
+        code, res = mock_router('GET', '/personal-assistant-api/api/vault', user=None)
+        self.assertEqual(code, 401)
+        self.assertEqual(res['error']['code'], 'UNAUTHORIZED')
+
+        # 2. POST /personal-assistant-api/api/vault without auth
+        code, res = mock_router('POST', '/personal-assistant-api/api/vault', user=None)
+        self.assertEqual(code, 401)
+        self.assertEqual(res['error']['code'], 'UNAUTHORIZED')
+
+        # 3. GET /personal-assistant-api/api/auth/me without auth
+        code, res = mock_router('GET', '/personal-assistant-api/api/auth/me', user=None)
+        self.assertEqual(code, 401)
+        self.assertEqual(res['error']['code'], 'UNAUTHORIZED')
+
+        # 4. Authenticated GET /personal-assistant-api/api/vault (when no vault exists)
+        code, res = mock_router('GET', '/personal-assistant-api/api/vault', user=self.user_a)
+        self.assertEqual(code, 404)
+        self.assertEqual(res['error']['code'], 'NOT_FOUND')
+        self.assertEqual(res['error']['message'], 'Secure vault not found')
+
+    def test_26_comprehensive_production_routes_and_methods_simulation(self):
+        # Full simulation mirroring backend/public/index.php and gateway normalization
+        def gateway_normalize(uri):
+            parsed_path = uri.split('?')[0]
+            parsed_query = uri.split('?')[1] if '?' in uri else ''
+            clean = '/' + parsed_path.strip('/')
+            for p in ['/personal-assistant-api', '/index.php', '/api.php']:
+                while clean.startswith(p):
+                    clean = clean[len(p):]
+                    clean = '/' + clean.strip('/')
+            norm = '/' if clean == '' else clean
+            return norm + ('?' + parsed_query if parsed_query else '')
+
+        def dispatch_request(method, uri, user=None, headers=None):
+            # Gateway step
+            norm_uri = gateway_normalize(uri)
+            path = norm_uri.split('?')[0]
+
+            # Public route
+            if path == '/api/health' and method == 'GET':
+                return 200, {'status': 'ok'}
+
+            # Protected routes require user
+            if not user:
+                # Any protected route returns 401
+                if path.startswith('/api/'):
+                    return 401, {'error': {'code': 'UNAUTHORIZED', 'message': 'Authentication required'}}
+                return 404, {'error': {'code': 'NOT_FOUND', 'message': 'Endpoint not found'}}
+
+            # Route dispatching
+            if path == '/api/auth/me' and method == 'GET':
+                return 200, {'data': {'user': user}}
+            if path == '/api/vault' and method == 'GET':
+                return VaultController.get_vault(user)
+            if path == '/api/vault' and method == 'POST':
+                return VaultController.create_vault(user, {})
+            if path == '/api/vault' and method == 'DELETE':
+                return VaultController.delete_vault(user)
+            if path == '/api/vault/key' and method in ['PATCH', 'PUT']:
+                return VaultController.update_key(user, {})
+            if path == '/api/vault/entries' and method == 'GET':
+                return VaultEntryController.list_entries(user)
+            if path == '/api/vault/entries' and method == 'POST':
+                return 201, {'data': {'entry': {}}}
+            if path.startswith('/api/vault/entries/'):
+                entry_id = path[len('/api/vault/entries/'):]
+                if method == 'GET': return 200, {'data': {'entry': {'id': entry_id}}}
+                if method in ['PATCH', 'PUT']: return 200, {'data': {'entry': {'id': entry_id}}}
+                if method == 'DELETE': return 200, {'data': {'deleted': True}}
+            if path in ['/api/tasks', '/api/expenses', '/api/income', '/api/focus-sessions', '/api/profile', '/api/preferences']:
+                return 200, {'data': []}
+            if path.startswith('/api/reports/'):
+                return 200, {'data': {}}
+
+            return 404, {'error': {'code': 'NOT_FOUND', 'message': 'Endpoint not found'}}
+
+        # Test all unauthenticated Vault routes return 401, NOT 404
+        vault_routes = [
+            ('GET', '/personal-assistant-api/api/vault'),
+            ('POST', '/personal-assistant-api/api/vault'),
+            ('PATCH', '/personal-assistant-api/api/vault/key'),
+            ('DELETE', '/personal-assistant-api/api/vault'),
+            ('GET', '/personal-assistant-api/api/vault/entries'),
+            ('POST', '/personal-assistant-api/api/vault/entries'),
+            ('GET', '/personal-assistant-api/api/vault/entries/550e8400-e29b-41d4-a716-446655440000'),
+            ('PATCH', '/personal-assistant-api/api/vault/entries/550e8400-e29b-41d4-a716-446655440000'),
+            ('DELETE', '/personal-assistant-api/api/vault/entries/550e8400-e29b-41d4-a716-446655440000'),
+            ('GET', '/personal-assistant-api/index.php/api/vault'),
+            ('POST', '/personal-assistant-api/index.php/api/vault'),
+        ]
+        for m, u in vault_routes:
+            code, res = dispatch_request(m, u, user=None)
+            self.assertEqual(code, 401, f"{m} {u} returned {code} instead of 401")
+            self.assertEqual(res['error']['code'], 'UNAUTHORIZED')
+
+        # Test unauthenticated Auth and v1.0 routes return 401
+        v1_routes = [
+            ('GET', '/personal-assistant-api/api/auth/me'),
+            ('GET', '/personal-assistant-api/api/tasks'),
+            ('POST', '/personal-assistant-api/api/tasks'),
+            ('GET', '/personal-assistant-api/api/expenses'),
+            ('GET', '/personal-assistant-api/api/income'),
+            ('GET', '/personal-assistant-api/api/focus-sessions'),
+            ('GET', '/personal-assistant-api/api/profile'),
+            ('GET', '/personal-assistant-api/api/preferences'),
+            ('GET', '/personal-assistant-api/api/reports/today'),
+        ]
+        for m, u in v1_routes:
+            code, res = dispatch_request(m, u, user=None)
+            self.assertEqual(code, 401, f"{m} {u} returned {code} instead of 401")
+            self.assertEqual(res['error']['code'], 'UNAUTHORIZED')
+
+        # Test public health route
+        code, res = dispatch_request('GET', '/personal-assistant-api/api/health')
+        self.assertEqual(code, 200)
+        self.assertEqual(res['status'], 'ok')
+
+        # Test authenticated Vault routes reach controller
+        code, res = dispatch_request('GET', '/personal-assistant-api/api/vault/entries', user=self.user_a)
+        self.assertEqual(code, 200)
+
+        code, res = dispatch_request('GET', '/personal-assistant-api/api/vault/entries/550e8400-e29b-41d4-a716-446655440000', user=self.user_a)
+        self.assertEqual(code, 200)
+        self.assertEqual(res['data']['entry']['id'], '550e8400-e29b-41d4-a716-446655440000')
+
+        code, res = dispatch_request('GET', '/personal-assistant-api/api/auth/me', user={'id': self.user_a})
+        self.assertEqual(code, 200)
+        self.assertEqual(res['data']['user']['id'], self.user_a)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

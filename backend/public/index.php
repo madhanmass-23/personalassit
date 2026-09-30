@@ -59,14 +59,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// Simple Router
-$request_uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '/';
+// Simple Router & Path Normalization
+$raw_path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '/';
 
-// Strip deployment base path if present
-$base_path = '/personal-assistant-api';
-if (strpos($request_uri, $base_path) === 0) {
-    $request_uri = substr($request_uri, strlen($base_path));
+// Strip deployment base paths, index.php, api.php, and repeated slashes
+$clean_path = '/' . trim($raw_path, '/');
+$prefixes = ['/personal-assistant-api', '/index.php', '/api.php'];
+$changed = true;
+while ($changed) {
+    $changed = false;
+    foreach ($prefixes as $prefix) {
+        if (strpos($clean_path, $prefix) === 0) {
+            $clean_path = substr($clean_path, strlen($prefix));
+            $clean_path = '/' . trim($clean_path, '/');
+            $changed = true;
+        }
+    }
 }
+
+$request_uri = $clean_path === '' ? '/' : $clean_path;
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 // Ensure JSON Content-Type for mutating endpoints (except avatar upload and DELETE/GET/OPTIONS)
