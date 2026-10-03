@@ -74,12 +74,15 @@ export function UnlockVaultForm({ metadata, onSuccess }: UnlockVaultFormProps) {
         <Lock className="w-10 h-10" />
       </div>
 
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <h2 className="text-2xl font-bold tracking-tight text-foreground">
-          Vault Locked
+          Unlock Secure Vault
         </h2>
         <p className="text-sm text-muted-foreground">
-          Enter your master password to decrypt your secrets.
+          Enter your <strong className="text-foreground font-semibold">Master Password</strong> to unlock your private secret locker.
+        </p>
+        <p className="text-xs text-muted-foreground/80 bg-secondary/50 py-2 px-3 rounded-xl border border-border/60 text-center">
+          💡 <strong>Master Password</strong> unlocks the entire vault. Your individual saved passwords and secrets are stored securely inside.
         </p>
       </div>
 

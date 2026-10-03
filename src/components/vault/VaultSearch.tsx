@@ -5,13 +5,11 @@ import { cn } from "@/lib/utils";
 
 export const VAULT_CATEGORIES = [
   "Login",
-  "Finance",
-  "Social",
-  "Email",
+  "Banking / UPI",
+  "Social Media",
   "Wi-Fi",
-  "Work",
-  "College",
-  "Personal",
+  "Email",
+  "Card",
   "Other",
 ] as const;
 

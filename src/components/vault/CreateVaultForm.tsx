@@ -116,7 +116,7 @@ export function CreateVaultForm({ onBack, onSuccess }: CreateVaultFormProps) {
           </h2>
         </div>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Your master password is the single key used to encrypt and decrypt all your vault secrets. Choose a strong, memorable passphrase.
+          Your <strong className="text-foreground">Master Password</strong> unlocks your entire Secure Vault locker. Individual saved passwords and secrets are stored safely inside.
         </p>
       </div>
 

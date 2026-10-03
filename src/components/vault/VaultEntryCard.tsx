@@ -4,27 +4,48 @@ import { useState } from "react";
 import { DecryptedVaultEntry } from "@/services/api/vault";
 import {
   KeyRound,
-  Eye,
-  Edit2,
-  Trash2,
   Copy,
   Check,
   Globe,
   Mail,
   Wifi,
-  Briefcase,
-  GraduationCap,
-  Shield,
   CreditCard,
-  Layers,
+  Share2,
+  Shield,
+  ChevronRight,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface VaultEntryCardProps {
   entry: DecryptedVaultEntry;
   onView: (entry: DecryptedVaultEntry) => void;
-  onEdit: (entry: DecryptedVaultEntry) => void;
-  onDelete: (entry: DecryptedVaultEntry) => void;
+  onEdit?: (entry: DecryptedVaultEntry) => void;
+  onDelete?: (entry: DecryptedVaultEntry) => void;
+}
+
+export function getCategoryIcon(category?: string) {
+  const cat = category?.toLowerCase().trim();
+  switch (cat) {
+    case "login":
+      return <KeyRound className="w-4 h-4" />;
+    case "banking / upi":
+    case "banking":
+    case "upi":
+    case "finance":
+      return <CreditCard className="w-4 h-4" />;
+    case "social media":
+    case "social":
+      return <Share2 className="w-4 h-4" />;
+    case "wi-fi":
+    case "wifi":
+      return <Wifi className="w-4 h-4" />;
+    case "email":
+      return <Mail className="w-4 h-4" />;
+    case "card":
+      return <CreditCard className="w-4 h-4" />;
+    default:
+      return <Shield className="w-4 h-4" />;
+  }
 }
 
 export function VaultEntryCard({
@@ -34,28 +55,6 @@ export function VaultEntryCard({
   onDelete,
 }: VaultEntryCardProps) {
   const [copied, setCopied] = useState(false);
-
-  const getCategoryIcon = (category?: string) => {
-    switch (category?.toLowerCase()) {
-      case "login":
-        return <KeyRound className="w-4 h-4" />;
-      case "finance":
-        return <CreditCard className="w-4 h-4" />;
-      case "social":
-      case "email":
-        return <Mail className="w-4 h-4" />;
-      case "wi-fi":
-        return <Wifi className="w-4 h-4" />;
-      case "work":
-        return <Briefcase className="w-4 h-4" />;
-      case "college":
-        return <GraduationCap className="w-4 h-4" />;
-      case "personal":
-        return <Shield className="w-4 h-4" />;
-      default:
-        return <Layers className="w-4 h-4" />;
-    }
-  };
 
   const handleCopyPassword = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -78,15 +77,16 @@ export function VaultEntryCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96 }}
       onClick={() => onView(entry)}
-      className="group p-4 rounded-2xl border border-border/70 bg-card/60 hover:bg-card/90 dark:bg-card/30 dark:hover:bg-card/60 backdrop-blur-sm transition-all duration-200 cursor-pointer shadow-xs hover:shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 select-none"
+      className="group p-4 rounded-2xl border border-border/80 bg-card hover:bg-accent/40 active:scale-[0.99] transition-all duration-150 cursor-pointer shadow-xs hover:shadow-md flex items-center justify-between gap-3 select-none w-full"
     >
-      {/* Left: Icon, Title, Username, Category */}
-      <div className="flex items-center gap-3.5 min-w-0 flex-1">
-        <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary/10 text-primary border border-primary/20 shrink-0">
+      {/* Left: Category Icon, Service Name, Username, Masked Password */}
+      <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
+        <div className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary/10 text-primary border border-primary/20 shrink-0 mt-0.5 sm:mt-0">
           {getCategoryIcon(entry.category)}
         </div>
 
         <div className="space-y-1 min-w-0 flex-1">
+          {/* Service Name & Category */}
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-base font-semibold text-foreground tracking-tight truncate">
               {entry.title}
@@ -98,43 +98,47 @@ export function VaultEntryCard({
             )}
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-muted-foreground truncate">
-            {entry.username && (
-              <span className="truncate font-mono">{entry.username}</span>
-            )}
+          {/* Username / ID */}
+          {entry.username && (
+            <p className="text-xs text-muted-foreground truncate font-mono">
+              {entry.username}
+            </p>
+          )}
+
+          {/* Masked Secret: Never displayed in plaintext in the list */}
+          <div className="flex items-center gap-2">
+            <span className="font-mono tracking-widest text-muted-foreground/70 text-xs select-none">
+              ••••••••••
+            </span>
             {entry.url && (
-              <span className="flex items-center gap-1 text-[11px] opacity-80 truncate">
+              <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-muted-foreground/60 truncate">
                 <Globe className="w-3 h-3 shrink-0" />
                 <span className="truncate">{entry.url.replace(/^https?:\/\//, "")}</span>
               </span>
             )}
-            {/* Masked Password Indication */}
-            <span className="font-mono tracking-widest text-muted-foreground/60 text-[11px]">
-              ••••••••
-            </span>
           </div>
         </div>
       </div>
 
-      {/* Right: Actions */}
-      <div className="flex items-center justify-end gap-1.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40">
+      {/* Right: Quick Copy and View Action */}
+      <div className="flex items-center justify-end gap-1.5 shrink-0">
         {(entry.password || entry.secret) && (
           <button
             type="button"
             onClick={handleCopyPassword}
             aria-label={`Copy password for ${entry.title}`}
             title="Copy Password"
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border/70 bg-secondary/50 hover:bg-secondary text-xs font-medium text-foreground transition-colors min-h-[36px]"
+            className="flex items-center gap-1 px-3 py-2 rounded-xl border border-border/70 bg-secondary/60 hover:bg-secondary active:bg-secondary/90 text-xs font-medium text-foreground transition-colors min-h-[40px] min-w-[40px]"
           >
             {copied ? (
               <>
                 <Check className="w-3.5 h-3.5 text-emerald-500" />
-                <span className="text-emerald-500 font-semibold">Copied</span>
+                <span className="text-emerald-500 font-semibold text-[11px] hidden sm:inline">Copied</span>
               </>
             ) : (
               <>
                 <Copy className="w-3.5 h-3.5 text-muted-foreground" />
-                <span>Copy</span>
+                <span className="hidden sm:inline text-[11px]">Copy</span>
               </>
             )}
           </button>
@@ -148,35 +152,9 @@ export function VaultEntryCard({
           }}
           aria-label={`View details for ${entry.title}`}
           title="View Secret"
-          className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
+          className="p-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center"
         >
-          <Eye className="w-4 h-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit(entry);
-          }}
-          aria-label={`Edit ${entry.title}`}
-          title="Edit Secret"
-          className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
-        >
-          <Edit2 className="w-4 h-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(entry);
-          }}
-          aria-label={`Delete ${entry.title}`}
-          title="Delete Secret"
-          className="p-2 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
-        >
-          <Trash2 className="w-4 h-4" />
+          <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
         </button>
       </div>
     </motion.div>

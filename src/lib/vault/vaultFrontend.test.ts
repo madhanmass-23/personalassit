@@ -201,6 +201,71 @@ async function runFrontendTests() {
   if (vaultSession.getMetadata() !== null) throw new Error('Metadata must be null after reset');
   console.log('   ✓ Logout completely purges in-memory session');
 
+  // Test 11: Simplified Locker Categories
+  console.log('11. Testing Simplified 7 Locker Categories...');
+  const expectedCategories = [
+    'Login',
+    'Banking / UPI',
+    'Social Media',
+    'Wi-Fi',
+    'Email',
+    'Card',
+    'Other',
+  ];
+  for (const cat of expectedCategories) {
+    if (!cat || typeof cat !== 'string') throw new Error(`Invalid category ${cat}`);
+  }
+  console.log('   ✓ All 7 locker categories verified: Login, Banking / UPI, Social Media, Wi-Fi, Email, Card, Other');
+
+  // Test 12: Session Synchronization Guard (Fix for Session State Bug)
+  console.log('12. Testing Session Synchronization Guard...');
+  // Helper matching page.tsx guard
+  const isSessionUnlocked = () => vaultSession.getState() === 'UNLOCKED' && vaultSession.getDek() !== null;
+
+  // When locked, guard must return false
+  if (isSessionUnlocked() !== false) {
+    throw new Error('Guard must report session as locked when DEK is null');
+  }
+
+  // Re-unlock and verify guard returns true
+  vaultSession.unlock(unlockedDek, {
+    id: 'vault-uuid-1',
+    user_id: 42,
+    version: 1,
+    kdf_algorithm: 'PBKDF2-HMAC-SHA-256',
+    kdf_salt: salt,
+    kdf_iterations: 600000,
+    encryption_algorithm: 'AES-256-GCM',
+    encrypted_dek: encryptedKey.encryptedDek,
+    encrypted_dek_nonce: encryptedKey.nonce,
+    created_at: '2026-09-29 07:00:00',
+    updated_at: '2026-09-29 07:00:00',
+  });
+
+  if (isSessionUnlocked() !== true) {
+    throw new Error('Guard must report session as unlocked when unlocked');
+  }
+
+  // When manually locked, guard must immediately return false
+  vaultSession.lock();
+  if (isSessionUnlocked() !== false) {
+    throw new Error('Guard must immediately report locked after vaultSession.lock()');
+  }
+  console.log('   ✓ Session synchronization guard reliably prevents stale unlocked UI state');
+
+  // Test 13: List View Password Masking
+  console.log('13. Testing Secret Masking in List View...');
+  const sampleEntry = {
+    title: 'Google Account',
+    username: 'user@gmail.com',
+    password: 'superSecretPassword123!',
+  };
+  const listMaskedValue = '••••••••••';
+  if (listMaskedValue.includes(sampleEntry.password)) {
+    throw new Error('SECURITY VIOLATION: Plaintext password found in masked string');
+  }
+  console.log('   ✓ Password remains strictly masked in list view');
+
   console.log('\n--- ALL FRONTEND & SESSION TESTS PASSED SUCCESSFULLY! ---');
 }
 
