@@ -163,6 +163,9 @@ if (strpos($request_uri, '/api/reports/') === 0) {
 
 // Secure Vault Routes (Protected)
 if (strpos($request_uri, '/api/vault') === 0) {
+    header("X-PA-Debug-Path: " . $request_uri);
+    header("X-PA-Debug-Router: backend");
+
     AuthMiddleware::handle();
 
     // Vault Key Rotation: PATCH /api/vault/key
@@ -190,7 +193,7 @@ if (strpos($request_uri, '/api/vault') === 0) {
         }
 
         // Single Entry by UUID: /api/vault/entries/{id}
-        if (preg_match('#^/([a-zA-Z0-9_-]+)$#', $entryRemainder, $matches)) {
+        if (preg_match('#^/([a-zA-Z0-9_-]+)/?$#', $entryRemainder, $matches)) {
             $entryId = $matches[1];
             if ($method === 'GET') {
                 VaultEntryController::show($entryId);

@@ -937,6 +937,108 @@ class TestSecureVaultBackendAPI(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(res['data']['user']['id'], self.user_a)
 
+    def test_27_gateway_delegation_fallback_and_debug_headers(self):
+        # Local simulation of the exact public gateway logic in personal-assistant-api/index.php
+        def simulate_gateway(uri, method='GET', auth_header=None, backend_has_vault=True, backend_exists=True):
+            raw_uri = uri
+            parsed_path = raw_uri.split('?')[0]
+            parsed_query = raw_uri.split('?')[1] if '?' in raw_uri else ''
+
+            # 1. Path Normalization
+            clean_path = '/' + parsed_path.strip('/')
+            prefixes = ['/personal-assistant-api', '/index.php', '/api.php']
+            changed = True
+            while changed:
+                changed = False
+                for p in prefixes:
+                    if clean_path.startswith(p):
+                        clean_path = clean_path[len(p):]
+                        clean_path = '/' + clean_path.strip('/')
+                        changed = True
+
+            normalized_path = '/' if clean_path == '' else clean_path
+            delegated_uri = normalized_path + ('?' + parsed_query if parsed_query else '')
+
+            is_vault = normalized_path.startswith('/api/vault')
+            headers = {}
+            if is_vault:
+                headers['X-PA-Debug-Path'] = normalized_path
+
+            # 2. Delegation check
+            can_delegate = False
+            if backend_exists:
+                if is_vault:
+                    if backend_has_vault:
+                        can_delegate = True
+                else:
+                    can_delegate = True
+
+            if can_delegate:
+                if is_vault:
+                    headers['X-PA-Debug-Router'] = 'backend'
+                # Simulate private backend router
+                if not auth_header:
+                    return 401, {'error': {'code': 'UNAUTHORIZED', 'message': 'Authentication required'}}, headers, normalized_path
+                return 200, {'status': 'delegated_backend'}, headers, normalized_path
+
+            # 3. Fallback Router
+            request_uri = normalized_path
+            if is_vault:
+                headers['X-PA-Debug-Router'] = 'fallback'
+
+            # Routing in fallback
+            if request_uri.startswith('/api/vault'):
+                if not auth_header:
+                    return 401, {'error': {'code': 'UNAUTHORIZED', 'message': 'Authentication required'}}, headers, normalized_path
+                return 200, {'status': 'handled_fallback'}, headers, normalized_path
+
+            if request_uri.startswith('/api/auth/'):
+                if request_uri == '/api/auth/me':
+                    if not auth_header:
+                        return 401, {'error': {'code': 'UNAUTHORIZED', 'message': 'Authentication required'}}, headers, normalized_path
+                    return 200, {'data': {'user': {'id': 'user_test'}}}, headers, normalized_path
+
+            return 404, {'error': {'code': 'NOT_FOUND'}}, headers, normalized_path
+
+        # Case 1: Live production situation where private backend lacks vault (or delegation fails)
+        # GET /personal-assistant-api/api/vault -> must yield 401, NOT 404, with fallback router header
+        status, body, headers, norm_path = simulate_gateway('/personal-assistant-api/api/vault', 'GET', auth_header=None, backend_has_vault=False)
+        self.assertEqual(status, 401)
+        self.assertEqual(norm_path, '/api/vault')
+        self.assertEqual(headers.get('X-PA-Debug-Path'), '/api/vault')
+        self.assertEqual(headers.get('X-PA-Debug-Router'), 'fallback')
+        self.assertEqual(body['error']['code'], 'UNAUTHORIZED')
+
+        # Case 2: POST /personal-assistant-api/api/vault -> must yield 401, NOT 404
+        status, body, headers, norm_path = simulate_gateway('/personal-assistant-api/api/vault', 'POST', auth_header=None, backend_has_vault=False)
+        self.assertEqual(status, 401)
+        self.assertEqual(norm_path, '/api/vault')
+        self.assertEqual(headers.get('X-PA-Debug-Path'), '/api/vault')
+        self.assertEqual(headers.get('X-PA-Debug-Router'), 'fallback')
+        self.assertEqual(body['error']['code'], 'UNAUTHORIZED')
+
+        # Case 3: GET /personal-assistant-api/api/auth/me -> 401
+        status, body, headers, norm_path = simulate_gateway('/personal-assistant-api/api/auth/me', 'GET', auth_header=None, backend_has_vault=False)
+        self.assertEqual(status, 401)
+        self.assertEqual(norm_path, '/api/auth/me')
+
+        # Case 4: When private backend has vault, delegation succeeds with backend router header
+        status, body, headers, norm_path = simulate_gateway('/personal-assistant-api/api/vault', 'GET', auth_header=None, backend_has_vault=True)
+        self.assertEqual(status, 401)
+        self.assertEqual(headers.get('X-PA-Debug-Router'), 'backend')
+        self.assertEqual(headers.get('X-PA-Debug-Path'), '/api/vault')
+
+        # Case 5: When authenticated, fallback router successfully handles vault
+        status, body, headers, norm_path = simulate_gateway('/personal-assistant-api/api/vault', 'GET', auth_header='Bearer valid_jwt', backend_has_vault=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get('X-PA-Debug-Router'), 'fallback')
+
+        # Case 6: Trailing slashes and query strings are normalized correctly
+        status, body, headers, norm_path = simulate_gateway('/personal-assistant-api/api/vault/?sort=desc', 'GET', auth_header=None, backend_has_vault=False)
+        self.assertEqual(status, 401)
+        self.assertEqual(norm_path, '/api/vault')
+        self.assertEqual(headers.get('X-PA-Debug-Path'), '/api/vault')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

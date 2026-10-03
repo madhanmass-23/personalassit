@@ -52,31 +52,40 @@ if ($bootstrapToken) {
 }
 
 // 3. Normalize REQUEST_URI before delegating (strips base path prefix while preserving query string)
-if (isset($_SERVER['REQUEST_URI'])) {
-    $parsedPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '';
-    $parsedQuery = parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY);
+$rawUri = $_SERVER['REQUEST_URI'] ?? '/';
+$parsedPath = parse_url($rawUri, PHP_URL_PATH) ?? '/';
+$parsedQuery = parse_url($rawUri, PHP_URL_QUERY);
 
-    $cleanPath = '/' . trim($parsedPath, '/');
-    $prefixes = ['/personal-assistant-api', '/index.php', '/api.php'];
-    $changed = true;
-    while ($changed) {
-        $changed = false;
-        foreach ($prefixes as $prefix) {
-            if (strpos($cleanPath, $prefix) === 0) {
-                $cleanPath = substr($cleanPath, strlen($prefix));
-                $cleanPath = '/' . trim($cleanPath, '/');
-                $changed = true;
-            }
+$cleanPath = '/' . trim($parsedPath, '/');
+$prefixes = ['/personal-assistant-api', '/index.php', '/api.php'];
+$changed = true;
+while ($changed) {
+    $changed = false;
+    foreach ($prefixes as $prefix) {
+        if (strpos($cleanPath, $prefix) === 0) {
+            $cleanPath = substr($cleanPath, strlen($prefix));
+            $cleanPath = '/' . trim($cleanPath, '/');
+            $changed = true;
         }
     }
-
-    $normalizedPath = $cleanPath === '' ? '/' : $cleanPath;
-    $_SERVER['REQUEST_URI'] = $normalizedPath . ($parsedQuery !== null && $parsedQuery !== '' ? '?' . $parsedQuery : '');
-    $_SERVER['PATH_INFO'] = $normalizedPath;
-    if (isset($_SERVER['REDIRECT_URL'])) {
-        $_SERVER['REDIRECT_URL'] = $normalizedPath;
-    }
 }
+
+$normalizedPath = $cleanPath === '' ? '/' : $cleanPath;
+$delegatedUri = $normalizedPath . ($parsedQuery !== null && $parsedQuery !== '' ? '?' . $parsedQuery : '');
+
+$_SERVER['REQUEST_URI'] = $delegatedUri;
+$_SERVER['PATH_INFO'] = $normalizedPath;
+if (isset($_SERVER['REDIRECT_URL'])) {
+    $_SERVER['REDIRECT_URL'] = $normalizedPath;
+}
+if (isset($_SERVER['SCRIPT_URL'])) {
+    $_SERVER['SCRIPT_URL'] = $normalizedPath;
+}
+if (isset($_SERVER['REDIRECT_SCRIPT_URL'])) {
+    $_SERVER['REDIRECT_SCRIPT_URL'] = $normalizedPath;
+}
+
+$isVault = (strpos($normalizedPath, '/api/vault') === 0);
 
 // 4. Resolve private backend path with fallback candidate locations
 $candidate_paths = [
@@ -97,18 +106,37 @@ foreach ($candidate_paths as $path) {
     }
 }
 
-if ($private_backend_path) {
+$canDelegate = false;
+if ($private_backend_path && file_exists($private_backend_path)) {
+    if ($isVault) {
+        // Only delegate vault requests if private backend actually contains vault routing
+        $backendCode = @file_get_contents($private_backend_path);
+        if ($backendCode && strpos($backendCode, '/api/vault') !== false) {
+            $canDelegate = true;
+        }
+    } else {
+        $canDelegate = true;
+    }
+}
+
+if ($canDelegate) {
+    if ($isVault) {
+        header("X-PA-Debug-Path: " . $normalizedPath);
+        header("X-PA-Debug-Router: backend");
+    }
     require $private_backend_path;
     exit;
 }
 
-// 5. Standalone Fallback Router (if private backend public/index.php cannot be directly required)
+// 5. Standalone Fallback Router (if private backend public/index.php cannot handle the route)
 spl_autoload_register(function ($class) {
     $candidate_base_dirs = [
         dirname(dirname(__DIR__)) . '/personal-assistant-backend/',
         '/home/sites/scaro.online/personal-assistant-backend/',
+        dirname(__DIR__) . '/personal-assistant-backend/',
         dirname(__DIR__) . '/backend/',
-        dirname(__DIR__) . '/'
+        dirname(__DIR__) . '/',
+        __DIR__ . '/'
     ];
 
     $parts = explode('\\', $class);
@@ -179,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-$request_uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '/';
+$request_uri = $normalizedPath;
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method !== 'GET' && $method !== 'OPTIONS' && $method !== 'DELETE') {
@@ -233,6 +261,9 @@ if (strpos($request_uri, '/api/reports/') === 0) {
 
 // Secure Vault
 if (strpos($request_uri, '/api/vault') === 0) {
+    header("X-PA-Debug-Path: " . $request_uri);
+    header("X-PA-Debug-Router: fallback");
+
     AuthMiddleware::handle();
 
     if ($request_uri === '/api/vault/key' || $request_uri === '/api/vault/key/') {
@@ -250,7 +281,7 @@ if (strpos($request_uri, '/api/vault') === 0) {
             exit;
         }
 
-        if (preg_match('#^/([a-zA-Z0-9_-]+)$#', $entryRemainder, $matches)) {
+        if (preg_match('#^/([a-zA-Z0-9_-]+)/?$#', $entryRemainder, $matches)) {
             $entryId = $matches[1];
             if ($method === 'GET') VaultEntryController::show($entryId);
             elseif ($method === 'PATCH' || $method === 'PUT') VaultEntryController::update($entryId);
